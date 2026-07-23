@@ -1,0 +1,186 @@
+/* ===================================================
+   App.css — PDFortress Frontend Styles
+   Author: Raj Patel (D24DIT050)
+   =================================================== */
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  background-color: #0f1117;
+  color: #e0e0e0;
+  min-height: 100vh;
+}
+
+.app-container {
+  max-width: 800px;
+  margin: 0 auto;
+  padding: 40px 20px;
+}
+
+/* Header */
+.app-header {
+  text-align: center;
+  margin-bottom: 40px;
+}
+
+.app-header h1 {
+  font-size: 2.5rem;
+  color: #4f9cf9;
+  letter-spacing: 2px;
+}
+
+.app-header p {
+  color: #888;
+  margin-top: 8px;
+  font-size: 1rem;
+}
+
+/* Upload Card */
+.upload-card {
+  background-color: #1a1d27;
+  border: 2px dashed #2e3350;
+  border-radius: 12px;
+  padding: 40px;
+  text-align: center;
+  transition: border-color 0.3s;
+}
+
+.upload-card:hover {
+  border-color: #4f9cf9;
+}
+
+.upload-card input[type="file"] {
+  display: none;
+}
+
+.upload-card label {
+  display: inline-block;
+  background-color: #2e3350;
+  color: #c0d0f0;
+  padding: 12px 28px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 0.95rem;
+  transition: background-color 0.2s;
+}
+
+.upload-card label:hover {
+  background-color: #3b4570;
+}
+
+.selected-file {
+  margin-top: 12px;
+  font-size: 0.85rem;
+  color: #aaa;
+}
+
+.btn-analyze {
+  margin-top: 20px;
+  background-color: #4f9cf9;
+  color: #fff;
+  border: none;
+  padding: 12px 36px;
+  border-radius: 8px;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.btn-analyze:hover:not(:disabled) {
+  background-color: #2a7de1;
+}
+
+.btn-analyze:disabled {
+  background-color: #555;
+  cursor: not-allowed;
+}
+
+/* Result Card */
+.result-card {
+  margin-top: 32px;
+  background-color: #1a1d27;
+  border-radius: 12px;
+  padding: 28px;
+}
+
+.result-card h2 {
+  font-size: 1.2rem;
+  color: #aaa;
+  margin-bottom: 16px;
+}
+
+.verdict-badge {
+  display: inline-block;
+  padding: 6px 20px;
+  border-radius: 20px;
+  font-size: 1rem;
+  font-weight: bold;
+  margin-bottom: 16px;
+}
+
+.verdict-Safe       { background-color: #1e4d2b; color: #4caf50; }
+.verdict-Suspicious { background-color: #4d3a00; color: #ffc107; }
+.verdict-Malicious  { background-color: #4d1010; color: #f44336; }
+
+.result-detail {
+  font-size: 0.9rem;
+  color: #bbb;
+  line-height: 1.8;
+}
+
+.result-detail strong {
+  color: #fff;
+}
+
+.tags-list {
+  margin-top: 12px;
+  list-style: none;
+}
+
+.tags-list li {
+  background-color: #2e3350;
+  display: inline-block;
+  padding: 4px 12px;
+  border-radius: 6px;
+  font-size: 0.8rem;
+  color: #f44336;
+  margin: 4px 4px 0 0;
+  font-family: monospace;
+}
+
+.warning-box {
+  margin-top: 12px;
+  background-color: #3a2c00;
+  border-left: 4px solid #ffc107;
+  padding: 10px 14px;
+  border-radius: 4px;
+  font-size: 0.85rem;
+  color: #ffc107;
+}
+
+/* Loading */
+.loading-text {
+  text-align: center;
+  color: #4f9cf9;
+  margin-top: 20px;
+  font-size: 0.95rem;
+  animation: pulse 1.2s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.4; }
+}
+
+/* Error */
+.error-text {
+  text-align: center;
+  color: #f44336;
+  margin-top: 16px;
+  font-size: 0.9rem;
+}
