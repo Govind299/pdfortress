@@ -87,40 +87,49 @@ async def upload_pdf(file: UploadFile = File(...), db: Session = Depends(get_db)
     with open(file_path, "wb") as f:
         f.write(contents)
 
-    # --- Run the static analysis engine ---
-    analysis_report = analyze_pdf(file_path)
-
-    # --- Save result to database ---
+    # --- Create initial pending scan record in database ---
     scan_record = Scan(
         original_filename=file.filename,
         stored_filename=safe_filename,
-        verdict=analysis_report["verdict"],
-        risk_score=analysis_report["risk_score"],
-        is_encrypted=1 if analysis_report["is_encrypted"] else 0,
-        page_count=analysis_report.get("page_count"),
-        author=analysis_report.get("author"),
-        analysis_summary=json.dumps(analysis_report),
+        status="PENDING",
+        verdict="Processing...",
+        risk_score=0.0
     )
     db.add(scan_record)
     db.commit()
     db.refresh(scan_record)
 
+    # --- Run analysis (Celery async dispatch with sync fallback) ---
+    try:
+        from celery_worker import process_pdf_scan
+        process_pdf_scan.delay(scan_record.id, file_path)
+        message = "File uploaded and task queued for Celery analysis."
+    except Exception as err:
+        # Fallback to direct synchronous execution if Celery dispatch fails
+        analysis_report = analyze_pdf(file_path)
+        scan_record.verdict = analysis_report["verdict"]
+        scan_record.risk_score = analysis_report["risk_score"]
+        scan_record.is_encrypted = 1 if analysis_report["is_encrypted"] else 0
+        scan_record.page_count = analysis_report.get("page_count")
+        scan_record.author = report.get("author") if (report := analysis_report) else None
+        scan_record.analysis_summary = json.dumps(analysis_report)
+        scan_record.status = "COMPLETED"
+        db.commit()
+        db.refresh(scan_record)
+        message = "File uploaded and analyzed directly."
+
     return {
-        "message": "Analysis complete.",
+        "message": message,
         "scan_id": scan_record.id,
         "original_filename": file.filename,
-        "verdict": analysis_report["verdict"],
-        "risk_score": analysis_report["risk_score"],
-        "is_encrypted": analysis_report["is_encrypted"],
-        "page_count": analysis_report["page_count"],
-        "author": analysis_report["author"],
-        "dangerous_tags_found": analysis_report["dangerous_tags_found"],
-        "warnings": analysis_report["warnings"],
+        "verdict": scan_record.verdict,
+        "risk_score": scan_record.risk_score,
+        "status": scan_record.status
     }
 
 
 @app.get("/api/scans", tags=["History"])
-def get_scan_history(db: SessionLocal = Depends(get_db)):
+def get_scan_history(db: Session = Depends(get_db)):
     """
     Returns a list of all previously scanned files with their verdicts.
     Used to populate the scan history dashboard on the frontend.
