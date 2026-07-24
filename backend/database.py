@@ -36,6 +36,7 @@ class Scan(Base):
     original_filename = Column(String, nullable=False)        # e.g. "invoice.pdf"
     stored_filename = Column(String, unique=True, nullable=False)  # UUID-based safe name
     upload_time = Column(DateTime, default=datetime.utcnow)
+    status = Column(String, default="PENDING")                 # "PENDING", "PROCESSING", "COMPLETED", "FAILED"
     verdict = Column(String, nullable=True)                   # "Safe", "Suspicious", "Malicious"
     risk_score = Column(Float, nullable=True)                 # Numeric score 0-100+
     analysis_summary = Column(Text, nullable=True)            # JSON string of full findings
