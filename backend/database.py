@@ -13,7 +13,7 @@ from datetime import datetime
 
 # SQLite file-based database for development
 # Switch to "postgresql://user:pass@host/dbname" for production
-DATABASE_URL = "sqlite:///./pdfortress.db"
+DATABASE_URL = "sqlite:///./pdfortress_v2.db"
 
 engine = create_engine(
     DATABASE_URL,
