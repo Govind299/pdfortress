@@ -5,6 +5,7 @@
  */
 
 import React, { useState } from "react";
+import ScanHistory from "./ScanHistory";
 import "./App.css";
 
 const API_BASE = "http://localhost:8000";
@@ -14,6 +15,7 @@ function App() {
   const [isLoading, setIsLoading]       = useState(false);
   const [result, setResult]             = useState(null);
   const [error, setError]               = useState(null);
+  const [refreshHistory, setRefreshHistory] = useState(0);
 
   // --- Handle file selection ---
   const handleFileChange = (e) => {
@@ -46,6 +48,7 @@ function App() {
 
       const data = await response.json();
       setResult(data);
+      setRefreshHistory((prev) => prev + 1);
     } catch (err) {
       setError(err.message || "Could not connect to the analysis server.");
     } finally {
@@ -138,6 +141,9 @@ function App() {
           )}
         </div>
       )}
+
+      {/* Scan History Table */}
+      <ScanHistory refreshTrigger={refreshHistory} />
     </div>
   );
 }

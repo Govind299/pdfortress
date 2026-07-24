@@ -184,3 +184,44 @@ body {
   margin-top: 16px;
   font-size: 0.9rem;
 }
+
+/* History Table Styles */
+.history-card {
+  margin-top: 32px;
+  background-color: #1a1d27;
+  border-radius: 12px;
+  padding: 28px;
+}
+
+.history-card h2 {
+  font-size: 1.2rem;
+  color: #4f9cf9;
+  margin-bottom: 16px;
+}
+
+.history-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 12px;
+  font-size: 0.88rem;
+}
+
+.history-table th,
+.history-table td {
+  padding: 12px 14px;
+  text-align: left;
+  border-bottom: 1px solid #2e3350;
+}
+
+.history-table th {
+  color: #888;
+  font-weight: 600;
+  text-transform: uppercase;
+  font-size: 0.75rem;
+  letter-spacing: 1px;
+}
+
+.history-table tr:hover {
+  background-color: #222634;
+}
+
