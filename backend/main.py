@@ -120,7 +120,7 @@ async def upload_pdf(file: UploadFile = File(...), db: Session = Depends(get_db)
 
 
 @app.get("/api/scans", tags=["History"])
-def get_scan_history(db: Session = Depends(get_db)):
+def get_scan_history(db: SessionLocal = Depends(get_db)):
     """
     Returns a list of all previously scanned files with their verdicts.
     Used to populate the scan history dashboard on the frontend.
@@ -132,6 +132,7 @@ def get_scan_history(db: Session = Depends(get_db)):
             "id": s.id,
             "original_filename": s.original_filename,
             "upload_time": s.upload_time.isoformat() if s.upload_time else None,
+            "status": getattr(s, "status", "COMPLETED"),
             "verdict": s.verdict,
             "risk_score": s.risk_score,
             "is_encrypted": bool(s.is_encrypted),
