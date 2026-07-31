@@ -150,3 +150,30 @@ def get_scan_history(db: Session = Depends(get_db)):
         }
         for s in scans
     ]
+
+
+@app.get("/api/scans/{scan_id}", tags=["Analysis"])
+def get_single_scan(scan_id: int, db: Session = Depends(get_db)):
+    """
+    Returns the status and full security report for a specific scan ID.
+    Used by the frontend polling loop to track asynchronous task progress.
+    """
+    scan = db.query(Scan).filter(Scan.id == scan_id).first()
+    if not scan:
+        raise HTTPException(status_code=404, detail="Scan record not found")
+
+    summary = json.loads(scan.analysis_summary) if scan.analysis_summary else {}
+
+    return {
+        "scan_id": scan.id,
+        "original_filename": scan.original_filename,
+        "status": scan.status or "COMPLETED",
+        "verdict": scan.verdict,
+        "risk_score": scan.risk_score,
+        "is_encrypted": bool(scan.is_encrypted),
+        "page_count": scan.page_count,
+        "author": scan.author,
+        "dangerous_tags_found": summary.get("dangerous_tags_found", {}),
+        "yara_matches": summary.get("yara_matches", []),
+        "warnings": summary.get("warnings", []),
+    }

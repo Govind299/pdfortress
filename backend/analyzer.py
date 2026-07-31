@@ -13,6 +13,7 @@ Author: Govind Suthar (D24DIT094)
 
 import fitz  # PyMuPDF
 import json
+import os
 
 
 # -------------------------------------------------------------------
@@ -68,6 +69,39 @@ def _scan_raw_bytes(file_path: str) -> dict:
     return findings
 
 
+def _scan_yara_rules(file_path: str) -> list:
+    """
+    Scans the PDF binary stream against YARA rules defined in rules/pdf_rules.yar.
+    Returns a list of matched rule names.
+    """
+    matched_rules = []
+    rule_file = os.path.join(os.path.dirname(__file__), "rules", "pdf_rules.yar")
+    
+    if not os.path.exists(rule_file):
+        return matched_rules
+
+    try:
+        import yara
+        rules = yara.compile(filepath=rule_file)
+        matches = rules.match(file_path)
+        matched_rules = [m.rule for m in matches]
+    except Exception:
+        # Heuristic fallback if yara module or compilation is not available
+        try:
+            with open(file_path, "rb") as f:
+                content = f.read().decode("latin-1", errors="replace")
+                if ("/JS" in content or "/JavaScript" in content) and ("eval(" in content or "unescape(" in content):
+                    matched_rules.append("Suspicious_PDF_JavaScript")
+                if ("/Launch" in content or "/OpenAction" in content) and ("cmd.exe" in content.lower() or "powershell" in content.lower()):
+                    matched_rules.append("Suspicious_PDF_AutoLaunch")
+                if "TVqQAAMAAAAEAAAA" in content or "\x4d\x5a\x90\x00" in content:
+                    matched_rules.append("Suspicious_Embedded_Binary")
+        except Exception:
+            pass
+
+    return matched_rules
+
+
 def analyze_pdf(file_path: str) -> dict:
     """
     Main analysis function. Takes the path to a stored PDF and returns
@@ -76,8 +110,9 @@ def analyze_pdf(file_path: str) -> dict:
     Steps:
       1. Open safely with PyMuPDF to extract metadata.
       2. Check for encryption (password-protected files).
-      3. Scan raw bytes for dangerous structural keywords.
-      4. Calculate the final risk score and verdict.
+      3. Scan raw bytes for dangerous structural keywords (Stage 1).
+      4. Match binary patterns against YARA rules (Stage 2).
+      5. Calculate the final risk score and verdict.
     """
     report = {
         "file_path": file_path,
@@ -88,6 +123,7 @@ def analyze_pdf(file_path: str) -> dict:
         "author": "Unknown",
         "creator": "Unknown",
         "dangerous_tags_found": {},
+        "yara_matches": [],
         "warnings": [],
         "analysis_successful": True,
     }
@@ -129,19 +165,30 @@ def analyze_pdf(file_path: str) -> dict:
     doc.close()
 
     # ------------------------------------------------------------------
-    # STEP 3: Scan raw bytes for dangerous structural keywords
+    # STEP 3: Scan raw bytes for dangerous structural keywords (Stage 1)
     # Mentor Query #2 — This is how malware is detected.
     # ------------------------------------------------------------------
     dangerous_tags = _scan_raw_bytes(file_path)
     report["dangerous_tags_found"] = dangerous_tags
 
     # ------------------------------------------------------------------
-    # STEP 4: Calculate risk score
+    # STEP 4: YARA Signature Matching (Stage 2)
+    # ------------------------------------------------------------------
+    yara_matches = _scan_yara_rules(file_path)
+    report["yara_matches"] = yara_matches
+
+    # ------------------------------------------------------------------
+    # STEP 5: Calculate risk score
     # ------------------------------------------------------------------
     total_score = 0.0
     for tag, count in dangerous_tags.items():
         if tag in RISK_WEIGHTS and count > 0:
             total_score += RISK_WEIGHTS[tag]
+
+    # Add score for YARA matches (35 pts per matched YARA rule)
+    if yara_matches:
+        total_score += len(yara_matches) * 35.0
+        report["warnings"].append(f"YARA Rule Signatures Matched: {', '.join(yara_matches)}")
 
     report["risk_score"] = round(total_score, 2)
     report["verdict"] = _compute_verdict(total_score)
