@@ -24,6 +24,30 @@ function App() {
     setError(null);
   };
 
+  // --- Auto-poll active scan until COMPLETED ---
+  React.useEffect(() => {
+    if (!result || !result.scan_id) return;
+    if (result.status === "COMPLETED" && result.verdict !== "Processing...") return;
+
+    const interval = setInterval(async () => {
+      try {
+        const res = await fetch(`${API_BASE}/api/scans/${result.scan_id}`);
+        if (res.ok) {
+          const updated = await res.json();
+          if (updated.status === "COMPLETED" || updated.verdict !== "Processing...") {
+            setResult(updated);
+            setRefreshHistory((prev) => prev + 1);
+            clearInterval(interval);
+          }
+        }
+      } catch (err) {
+        console.error("Error polling scan status:", err);
+      }
+    }, 1500);
+
+    return () => clearInterval(interval);
+  }, [result]);
+
   // --- Handle file upload and analysis ---
   const handleAnalyze = async () => {
     if (!selectedFile) return;
@@ -117,7 +141,7 @@ function App() {
             </p>
           </div>
 
-          {/* Dangerous Tags Found */}
+          {/* Dangerous Tags Found (Stage 1) */}
           {Object.keys(result.dangerous_tags_found || {}).length > 0 && (
             <div style={{ marginTop: "16px" }}>
               <strong>Dangerous Tags Detected:</strong>
@@ -125,6 +149,20 @@ function App() {
                 {Object.entries(result.dangerous_tags_found).map(([tag, count]) => (
                   <li key={tag}>
                     {tag} ×{count}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {/* YARA Signature Matches (Stage 2) */}
+          {result.yara_matches && result.yara_matches.length > 0 && (
+            <div style={{ marginTop: "16px" }}>
+              <strong>YARA Rules Matched:</strong>
+              <ul className="tags-list">
+                {result.yara_matches.map((rule) => (
+                  <li key={rule} style={{ backgroundColor: "#5c1d1d", color: "#ff8888" }}>
+                    🛡️ {rule}
                   </li>
                 ))}
               </ul>

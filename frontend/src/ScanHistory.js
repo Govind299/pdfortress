@@ -28,6 +28,9 @@ function ScanHistory({ refreshTrigger }) {
 
   useEffect(() => {
     fetchScans();
+    // Auto-poll scan history every 2 seconds so processing items auto-update
+    const interval = setInterval(fetchScans, 2000);
+    return () => clearInterval(interval);
   }, [refreshTrigger]);
 
   return (
