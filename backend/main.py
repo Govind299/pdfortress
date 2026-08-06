@@ -30,11 +30,11 @@ app = FastAPI(
     version="0.1.0"
 )
 
-# Allow the React frontend (running on port 3000) to call this API
+# Allow all localhost frontend origins (port 3000, 127.0.0.1, etc.)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
-    allow_credentials=True,
+    allow_origins=["*"],
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
