@@ -1,11 +1,11 @@
 /**
  * ScanHistory.js — PDFortress Scan History Log
- * Built on Vercel Geist System with 8-item Pagination Controls
+ * Built on Vercel Geist System with 8-item Pagination Controls & Truncated Filename Handling
  */
 
 import React, { useEffect, useState } from "react";
 
-const API_BASE = `${window.location.protocol}//${window.location.hostname}:8000`;
+const API_BASE = "http://127.0.0.1:8000";
 const PAGE_SIZE = 8;
 
 function ScanHistory({ refreshTrigger }) {
@@ -43,7 +43,7 @@ function ScanHistory({ refreshTrigger }) {
   };
 
   return (
-    <div className="geist-report-card">
+    <div className="geist-report-card" style={{ overflow: "hidden" }}>
       <div className="geist-mono-eyebrow" style={{ marginBottom: "16px" }}>
         SYSTEM AUDIT LOGS // HISTORICAL SCANS
       </div>
@@ -68,34 +68,47 @@ function ScanHistory({ refreshTrigger }) {
         </p>
       ) : (
         <>
-          <table className="geist-table">
-            <thead>
-              <tr>
-                <th>File Name</th>
-                <th>Status / Verdict</th>
-                <th>Risk Score</th>
-                <th>Encrypted</th>
-                <th>Date</th>
-              </tr>
-            </thead>
-            <tbody>
-              {paginatedScans.map((s) => (
-                <tr key={s.id}>
-                  <td style={{ fontWeight: 500 }}>{s.original_filename}</td>
-                  <td>
-                    <span className={`geist-badge-verdict verdict-${s.verdict || "Pending"}`}>
-                      {s.verdict || s.status || "Processing..."}
-                    </span>
-                  </td>
-                  <td style={{ fontFamily: "var(--font-mono)" }}>{s.risk_score ?? "-"}</td>
-                  <td>{s.is_encrypted ? "Yes" : "No"}</td>
-                  <td style={{ fontFamily: "var(--font-mono)", fontSize: "12px", color: "var(--colors-mute)" }}>
-                    {s.upload_time ? new Date(s.upload_time).toLocaleString() : "-"}
-                  </td>
+          <div style={{ width: "100%", overflowX: "auto" }}>
+            <table className="geist-table" style={{ tableLayout: "fixed", width: "100%" }}>
+              <thead>
+                <tr>
+                  <th style={{ width: "42%" }}>File Name</th>
+                  <th style={{ width: "18%" }}>Status / Verdict</th>
+                  <th style={{ width: "12%" }}>Risk Score</th>
+                  <th style={{ width: "10%" }}>Encrypted</th>
+                  <th style={{ width: "18%" }}>Date</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {paginatedScans.map((s) => (
+                  <tr key={s.id}>
+                    <td
+                      style={{
+                        fontWeight: 500,
+                        whiteSpace: "nowrap",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        maxWidth: "0"
+                      }}
+                      title={s.original_filename}
+                    >
+                      {s.original_filename}
+                    </td>
+                    <td>
+                      <span className={`geist-badge-verdict verdict-${s.verdict || "Pending"}`}>
+                        {s.verdict || s.status || "Processing..."}
+                      </span>
+                    </td>
+                    <td style={{ fontFamily: "var(--font-mono)" }}>{s.risk_score ?? "-"}</td>
+                    <td>{s.is_encrypted ? "Yes" : "No"}</td>
+                    <td style={{ fontFamily: "var(--font-mono)", fontSize: "12px", color: "var(--colors-mute)" }}>
+                      {s.upload_time ? new Date(s.upload_time).toLocaleString() : "-"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
 
           {/* Pagination Controls */}
           {totalPages > 1 && (
