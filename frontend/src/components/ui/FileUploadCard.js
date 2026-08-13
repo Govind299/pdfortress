@@ -7,7 +7,18 @@ function cn(...classes) {
 }
 
 export const FileUploadCard = forwardRef(function FileUploadCard(
-  { className, files = [], onFilesChange, onFileRemove, onClose, onStartScan, isLoading, ...props },
+  {
+    className,
+    files = [],
+    onFilesChange,
+    onFileRemove,
+    onClose,
+    onStartScan,
+    isLoading = false,
+    password = "",
+    onPasswordChange,
+    ...props
+  },
   ref
 ) {
   const [isDragging, setIsDragging] = useState(false);
@@ -93,104 +104,114 @@ export const FileUploadCard = forwardRef(function FileUploadCard(
       }}
       {...props}
     >
-      <div>
-        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
-            <div style={{
-              width: "48px",
-              height: "48px",
+      {/* Header Bar */}
+      <div
+        style={{
+          display: "flex",
+          justify: "space-between",
+          alignItems: "center",
+          marginBottom: "16px",
+          paddingBottom: "12px",
+          borderBottom: "1px solid #f0f0f0"
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+          <div
+            style={{
+              width: "8px",
+              height: "8px",
               borderRadius: "50%",
-              backgroundColor: "#f2f2f2",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center"
-            }}>
-              <UploadCloud style={{ width: "24px", height: "24px", color: "#666666" }} />
-            </div>
-            <div>
-              <h3 style={{ fontSize: "18px", fontWeight: "600", color: "#171717", margin: 0 }}>
-                Upload PDF Files
-              </h3>
-              <p style={{ fontSize: "14px", color: "#8f8f8f", marginTop: "2px", margin: 0 }}>
-                Select and upload the PDF documents to inspect for malware
-              </p>
-            </div>
-          </div>
-          {onClose && (
-            <button
-              type="button"
-              onClick={onClose}
-              style={{
-                background: "none",
-                border: "none",
-                cursor: "pointer",
-                padding: "4px",
-                borderRadius: "50%"
-              }}
-            >
-              <X style={{ width: "16px", height: "16px", color: "#171717" }} />
-            </button>
-          )}
+              backgroundColor: "#171717"
+            }}
+          />
+          <span style={{ fontSize: "14px", fontWeight: "600", color: "#171717" }}>
+            PDF Document Scanner
+          </span>
         </div>
 
-        <div
-          onDragEnter={handleDragEnter}
-          onDragLeave={handleDragLeave}
-          onDragOver={handleDragOver}
-          onDrop={handleDrop}
-          onClick={triggerFileSelect}
-          style={{
-            marginTop: "20px",
-            border: isDragging ? "2px dashed #171717" : "2px dashed #ebebeb",
-            backgroundColor: isDragging ? "rgba(23, 23, 23, 0.04)" : "#fafafa",
-            borderRadius: "8px",
-            padding: "32px 20px",
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "center",
-            justifyContent: "center",
-            textAlign: "center",
-            cursor: "pointer",
-            transition: "all 0.2s ease"
-          }}
-        >
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".pdf"
-            style={{ display: "none" }}
-            onChange={handleFileSelect}
-          />
-          <UploadCloud style={{ width: "36px", height: "36px", color: "#8f8f8f", marginBottom: "12px" }} />
-          <p style={{ fontWeight: "600", color: "#171717", fontSize: "15px", margin: 0 }}>
-            Choose a PDF file or drag & drop it here.
-          </p>
-          <p style={{ fontSize: "12px", color: "#8f8f8f", marginTop: "4px", margin: 0 }}>
-            PDF documents with JavaScript tags, auto-launch exploits, or YARA rules.
-          </p>
+        {onClose && (
           <button
             type="button"
+            onClick={onClose}
             style={{
-              marginTop: "16px",
-              padding: "6px 16px",
-              fontSize: "13px",
-              fontWeight: "500",
-              borderRadius: "6px",
-              border: "1px solid #ebebeb",
-              backgroundColor: "#ffffff",
-              color: "#171717",
+              background: "none",
+              border: "none",
               cursor: "pointer",
-              pointerEvents: "none"
+              color: "#8f8f8f",
+              padding: "4px"
             }}
           >
-            Browse File
+            <X style={{ width: "16px", height: "16px" }} />
           </button>
-        </div>
+        )}
       </div>
 
+      {/* Hidden File Input */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        multiple
+        accept=".pdf"
+        onChange={handleFileSelect}
+        style={{ display: "none" }}
+      />
+
+      {/* Dropzone Container */}
+      <div
+        onDragEnter={handleDragEnter}
+        onDragLeave={handleDragLeave}
+        onDragOver={handleDragOver}
+        onDrop={handleDrop}
+        onClick={triggerFileSelect}
+        style={{
+          border: isDragging ? "2px dashed #171717" : "1px dashed #e0e0e0",
+          backgroundColor: isDragging ? "#fafafa" : "#fcfcfc",
+          borderRadius: "8px",
+          padding: "32px 16px",
+          textAlign: "center",
+          cursor: "pointer",
+          transition: "all 0.2s ease"
+        }}
+      >
+        <div
+          style={{
+            width: "40px",
+            height: "40px",
+            borderRadius: "50%",
+            backgroundColor: "#f5f5f5",
+            display: "flex",
+            alignItems: "center",
+            justify: "center",
+            margin: "0 auto 12px auto"
+          }}
+        >
+          <UploadCloud style={{ width: "20px", height: "20px", color: "#171717" }} />
+        </div>
+        <p style={{ fontSize: "14px", fontWeight: "500", color: "#171717", margin: 0 }}>
+          Click to upload or drag and drop PDF files
+        </p>
+        <p style={{ fontSize: "12px", color: "#8f8f8f", marginTop: "4px", margin: 0 }}>
+          Only PDF format supported (Max size 100 MB)
+        </p>
+      </div>
+
+      {/* Uploaded File List */}
       {files.length > 0 && (
-        <div style={{ marginTop: "20px", paddingTop: "20px", borderTop: "1px solid #ebebeb" }}>
-          <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: "12px" }}>
+        <div style={{ marginTop: "16px" }}>
+          <div
+            style={{
+              fontSize: "12px",
+              fontWeight: "600",
+              color: "#8f8f8f",
+              textTransform: "uppercase",
+              letterSpacing: "0.5px",
+              marginBottom: "8px"
+            }}
+          >
+            Uploaded Files ({files.length})
+          </div>
+
+          <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
             <AnimatePresence>
               {files.map((fileItem) => (
                 <motion.li
@@ -198,66 +219,48 @@ export const FileUploadCard = forwardRef(function FileUploadCard(
                   variants={fileItemVariants}
                   initial="hidden"
                   animate="visible"
-                  exit="hidden"
-                  layout
+                  exit={{ opacity: 0, height: 0, marginTop: 0 }}
+                  transition={{ duration: 0.2 }}
                   style={{
                     display: "flex",
                     alignItems: "center",
-                    justifyContent: "space-between",
-                    padding: "10px 14px",
+                    justify: "space-between",
+                    padding: "10px 12px",
                     backgroundColor: "#fafafa",
-                    borderRadius: "8px",
-                    border: "1px solid #ebebeb"
+                    borderRadius: "6px",
+                    border: "1px solid #f0f0f0",
+                    marginBottom: "8px"
                   }}
                 >
-                  <div style={{ display: "flex", alignItems: "center", gap: "12px", flex: 1, minWidth: 0 }}>
-                    <div style={{
-                      width: "38px",
-                      height: "38px",
-                      borderRadius: "6px",
-                      backgroundColor: "#ebebeb",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      fontSize: "11px",
-                      fontWeight: "700",
-                      color: "#4d4d4d",
-                      flexShrink: 0
-                    }}>
-                      PDF
-                    </div>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <p style={{
-                        fontSize: "14px",
-                        fontWeight: "500",
-                        color: "#171717",
-                        margin: 0,
-                        whiteSpace: "nowrap",
-                        overflow: "hidden",
-                        textOverflow: "ellipsis"
-                      }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "10px", minWidth: 0 }}>
+                    <CheckCircle2 style={{ width: "16px", height: "16px", color: "#10b981", flexShrink: 0 }} />
+                    <div style={{ minWidth: 0 }}>
+                      <p
+                        style={{
+                          fontSize: "13px",
+                          fontWeight: "500",
+                          color: "#171717",
+                          margin: 0,
+                          whiteSpace: "nowrap",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis"
+                        }}
+                      >
                         {fileItem.file.name}
                       </p>
-                      <div style={{ fontSize: "12px", color: "#8f8f8f", marginTop: "2px" }}>
-                        <span>{formatFileSize(fileItem.file.size)}</span>
-                        <span style={{ margin: "0 6px" }}>•</span>
-                        <span style={{
-                          color: fileItem.status === 'completed' ? '#10b981' : '#0070f3',
-                          fontWeight: "500"
-                        }}>
-                          {fileItem.status === 'completed' ? 'Ready to analyze' : 'Uploading...'}
-                        </span>
-                      </div>
+                      <p style={{ fontSize: "11px", color: "#8f8f8f", margin: 0 }}>
+                        {formatFileSize(fileItem.file.size)}
+                      </p>
                     </div>
                   </div>
 
-                  <div style={{ display: "flex", alignItems: "center", gap: "8px", flexShrink: 0 }}>
-                    {fileItem.status === 'completed' && (
-                      <CheckCircle2 style={{ width: "18px", height: "18px", color: "#10b981" }} />
-                    )}
+                  <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
                     <button
                       type="button"
-                      onClick={() => onFileRemove(fileItem.id)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onFileRemove(fileItem.id);
+                      }}
                       style={{
                         background: "none",
                         border: "none",
@@ -279,8 +282,25 @@ export const FileUploadCard = forwardRef(function FileUploadCard(
             </AnimatePresence>
           </ul>
 
-          {/* Scan Action Button */}
-          <div style={{ marginTop: "16px", textAlign: "right" }}>
+          {/* Password Input & Scan Action Button */}
+          <div style={{ marginTop: "16px", display: "flex", gap: "12px", alignItems: "center", justifyContent: "space-between" }}>
+            <input
+              type="password"
+              placeholder="🔒 Password (Optional for encrypted PDFs)"
+              value={password}
+              onChange={(e) => onPasswordChange && onPasswordChange(e.target.value)}
+              style={{
+                flex: 1,
+                padding: "8px 14px",
+                fontSize: "13px",
+                borderRadius: "6px",
+                border: "1px solid #e0e0e0",
+                backgroundColor: "#fcfcfc",
+                color: "#171717",
+                fontFamily: "monospace",
+                outline: "none"
+              }}
+            />
             <button
               type="button"
               onClick={onStartScan}
@@ -294,6 +314,7 @@ export const FileUploadCard = forwardRef(function FileUploadCard(
                 fontWeight: "500",
                 border: "none",
                 cursor: "pointer",
+                whiteSpace: "nowrap",
                 opacity: isLoading ? 0.6 : 1
               }}
             >
@@ -305,3 +326,5 @@ export const FileUploadCard = forwardRef(function FileUploadCard(
     </motion.div>
   );
 });
+
+export default FileUploadCard;
