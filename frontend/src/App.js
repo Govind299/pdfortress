@@ -13,6 +13,7 @@ const API_BASE = "http://127.0.0.1:8000";
 
 function App() {
   const [files, setFiles] = useState([]);
+  const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [scanStage, setScanStage] = useState("");
   const [result, setResult] = useState(null);
@@ -62,6 +63,9 @@ function App() {
 
     const formData = new FormData();
     formData.append("file", fileToScan);
+    if (password) {
+      formData.append("password", password);
+    }
 
     try {
       // Step 1: Upload file to FastAPI
@@ -155,6 +159,8 @@ function App() {
               onFileRemove={handleFileRemove}
               onStartScan={handleAnalyze}
               isLoading={isLoading}
+              password={password}
+              onPasswordChange={setPassword}
             />
           </div>
 

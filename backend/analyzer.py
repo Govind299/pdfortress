@@ -48,16 +48,18 @@ def _compute_verdict(score: float) -> str:
     return VERDICT_SAFE
 
 
-def _scan_raw_bytes(file_path: str) -> dict:
+def _scan_raw_bytes(file_path: str, pdf_bytes: bytes = None) -> dict:
     """
-    Reads the PDF as raw bytes and counts occurrences of dangerous keywords.
-    This is equivalent to what the pdfid tool does internally.
-    Returns a dict of {keyword: count}.
+    Reads the PDF as raw bytes (or uses decrypted in-memory stream)
+    and counts occurrences of dangerous keywords.
     """
     findings = {}
     try:
-        with open(file_path, "rb") as f:
-            raw_content = f.read().decode("latin-1", errors="replace")
+        if pdf_bytes is not None:
+            raw_content = pdf_bytes.decode("latin-1", errors="replace")
+        else:
+            with open(file_path, "rb") as f:
+                raw_content = f.read().decode("latin-1", errors="replace")
 
         for keyword in RISK_WEIGHTS:
             count = raw_content.count(keyword)
@@ -69,10 +71,10 @@ def _scan_raw_bytes(file_path: str) -> dict:
     return findings
 
 
-def _scan_yara_rules(file_path: str) -> list:
+def _scan_yara_rules(file_path: str, pdf_bytes: bytes = None) -> list:
     """
     Scans the PDF binary stream against YARA rules defined in rules/pdf_rules.yar.
-    Returns a list of matched rule names.
+    Supports in-memory byte streams for decrypted password-protected PDFs.
     """
     matched_rules = []
     rule_file = os.path.join(os.path.dirname(__file__), "rules", "pdf_rules.yar")
@@ -83,36 +85,36 @@ def _scan_yara_rules(file_path: str) -> list:
     try:
         import yara
         rules = yara.compile(filepath=rule_file)
-        matches = rules.match(file_path)
+        if pdf_bytes is not None:
+            matches = rules.match(data=pdf_bytes)
+        else:
+            matches = rules.match(file_path)
         matched_rules = [m.rule for m in matches]
     except Exception:
         # Heuristic fallback if yara module or compilation is not available
         try:
-            with open(file_path, "rb") as f:
-                content = f.read().decode("latin-1", errors="replace")
-                if ("/JS" in content or "/JavaScript" in content) and ("eval(" in content or "unescape(" in content):
-                    matched_rules.append("Suspicious_PDF_JavaScript")
-                if ("/Launch" in content or "/OpenAction" in content) and ("cmd.exe" in content.lower() or "powershell" in content.lower()):
-                    matched_rules.append("Suspicious_PDF_AutoLaunch")
-                if "TVqQAAMAAAAEAAAA" in content or "\x4d\x5a\x90\x00" in content:
-                    matched_rules.append("Suspicious_Embedded_Binary")
+            if pdf_bytes is not None:
+                content = pdf_bytes.decode("latin-1", errors="replace")
+            else:
+                with open(file_path, "rb") as f:
+                    content = f.read().decode("latin-1", errors="replace")
+
+            if ("/JS" in content or "/JavaScript" in content) and ("eval(" in content or "unescape(" in content):
+                matched_rules.append("Suspicious_PDF_JavaScript")
+            if ("/Launch" in content or "/OpenAction" in content) and ("cmd.exe" in content.lower() or "powershell" in content.lower()):
+                matched_rules.append("Suspicious_PDF_AutoLaunch")
+            if "TVqQAAMAAAAEAAAA" in content or "\x4d\x5a\x90\x00" in content:
+                matched_rules.append("Suspicious_Embedded_Binary")
         except Exception:
             pass
 
     return matched_rules
 
 
-def analyze_pdf(file_path: str) -> dict:
+def analyze_pdf(file_path: str, password: str = None) -> dict:
     """
     Main analysis function. Takes the path to a stored PDF and returns
     a complete analysis report as a Python dictionary.
-
-    Steps:
-      1. Open safely with PyMuPDF to extract metadata.
-      2. Check for encryption (password-protected files).
-      3. Scan raw bytes for dangerous structural keywords (Stage 1).
-      4. Match binary patterns against YARA rules (Stage 2).
-      5. Calculate the final risk score and verdict.
     """
     report = {
         "file_path": file_path,
@@ -128,6 +130,8 @@ def analyze_pdf(file_path: str) -> dict:
         "analysis_successful": True,
     }
 
+    pdf_bytes = None
+
     # ------------------------------------------------------------------
     # STEP 1: Open the PDF and extract metadata using PyMuPDF
     # ------------------------------------------------------------------
@@ -141,23 +145,40 @@ def analyze_pdf(file_path: str) -> dict:
         return report
 
     # ------------------------------------------------------------------
-    # STEP 2: Check for encryption (password protection)
-    # Mentor Query #3 — Addressing handling of encrypted PDFs.
+    # STEP 2: Check for encryption (password protection & authentication)
     # ------------------------------------------------------------------
     if doc.is_encrypted:
         report["is_encrypted"] = True
-        report["warnings"].append(
-            "File is password-protected (encrypted). "
-            "Deep structural analysis is not possible on encrypted files. "
-            "Treat with caution."
-        )
-        report["verdict"] = VERDICT_SUSPICIOUS
-        report["risk_score"] = 40.0
-        doc.close()
-        return report
+        authenticated = False
+        if password:
+            try:
+                authenticated = doc.authenticate(password)
+            except Exception:
+                authenticated = False
+                
+            if not authenticated:
+                report["warnings"].append("Invalid password provided for encrypted PDF.")
+                report["verdict"] = VERDICT_SUSPICIOUS
+                report["risk_score"] = 40.0
+                doc.close()
+                return report
+            else:
+                report["warnings"].append("Encrypted PDF successfully decrypted with user password for deep inspection.")
+                try:
+                    pdf_bytes = doc.tobytes()
+                except Exception:
+                    pass
+        else:
+            report["warnings"].append(
+                "File is password-protected (encrypted). "
+                "Provide document password for deep structural analysis."
+            )
+            report["verdict"] = VERDICT_SUSPICIOUS
+            report["risk_score"] = 40.0
+            doc.close()
+            return report
 
     # Extract PDF metadata
-    # Mentor Query #1 — This is how we view PDF properties.
     metadata = doc.metadata
     report["page_count"] = doc.page_count
     report["author"] = metadata.get("author", "Unknown") or "Unknown"
@@ -165,16 +186,15 @@ def analyze_pdf(file_path: str) -> dict:
     doc.close()
 
     # ------------------------------------------------------------------
-    # STEP 3: Scan raw bytes for dangerous structural keywords (Stage 1)
-    # Mentor Query #2 — This is how malware is detected.
+    # STEP 3: Scan raw/decrypted bytes for dangerous structural keywords (Stage 1)
     # ------------------------------------------------------------------
-    dangerous_tags = _scan_raw_bytes(file_path)
+    dangerous_tags = _scan_raw_bytes(file_path, pdf_bytes=pdf_bytes)
     report["dangerous_tags_found"] = dangerous_tags
 
     # ------------------------------------------------------------------
     # STEP 4: YARA Signature Matching (Stage 2)
     # ------------------------------------------------------------------
-    yara_matches = _scan_yara_rules(file_path)
+    yara_matches = _scan_yara_rules(file_path, pdf_bytes=pdf_bytes)
     report["yara_matches"] = yara_matches
 
     # ------------------------------------------------------------------

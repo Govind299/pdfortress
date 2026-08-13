@@ -33,7 +33,7 @@ celery_app.conf.update(
 
 
 @celery_app.task(name="tasks.process_pdf_scan")
-def process_pdf_scan(scan_id: int, file_path: str):
+def process_pdf_scan(scan_id: int, file_path: str, password: str = None):
     """
     Background worker task. Reads the PDF file from disk, runs static analysis,
     and updates the database record with findings.
@@ -48,7 +48,7 @@ def process_pdf_scan(scan_id: int, file_path: str):
         db.commit()
 
         # Run static analysis engine (PyMuPDF + raw byte scanning)
-        report = analyze_pdf(file_path)
+        report = analyze_pdf(file_path, password=password)
 
         # Update database with results
         scan.verdict = report["verdict"]
