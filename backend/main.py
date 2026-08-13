@@ -1,33 +1,28 @@
 """
 main.py
 -------
-FastAPI application entry point for PDFortress.
-Exposes three REST API endpoints:
-  - GET  /health          → Server health check
-  - POST /api/upload      → Secure PDF upload + analysis trigger
-  - GET  /api/scans       → Retrieve scan history
+FastAPI REST API server for PDFortress.
+Handles file uploads, runs analysis (via Celery or direct fallback),
+and serves scan status and history endpoints to the React frontend.
 
-Author: Govind Suthar (D24DIT094)
+Author: Raj Patel (23DIT050) & Govind Suthar (D24DIT094)
 """
 
-import uuid
 import os
+import uuid
 import json
-
-from fastapi import FastAPI, File, UploadFile, HTTPException, Depends
+from typing import Optional
+from fastapi import FastAPI, File, UploadFile, Form, HTTPException, Depends, Query
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 
-from database import init_db, get_db, Scan
+from database import get_db, init_db, Scan
 from analyzer import analyze_pdf
 
-# -------------------------------------------------------------------
-# App initialization
-# -------------------------------------------------------------------
 app = FastAPI(
     title="PDFortress API",
-    description="A multi-layered PDF malware static analysis platform.",
-    version="0.1.0"
+    description="Multi-layered static analysis pipeline for PDF malware detection.",
+    version="1.0.0"
 )
 
 # Allow all localhost frontend origins (port 3000, 127.0.0.1, etc.)
@@ -42,6 +37,9 @@ app.add_middleware(
 # Directory where uploaded PDFs will be saved
 UPLOAD_DIR = "uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
+
+# 100 MB Maximum File Size Limit (Server Hardening)
+MAX_FILE_SIZE = 100 * 1024 * 1024
 
 # Create database tables on startup
 init_db()
@@ -61,33 +59,46 @@ def health_check():
 
 
 @app.post("/api/upload", tags=["Analysis"])
-async def upload_pdf(file: UploadFile = File(...), db: Session = Depends(get_db)):
+async def upload_pdf(
+    file: UploadFile = File(...),
+    password: Optional[str] = Form(None),
+    db: Session = Depends(get_db)
+):
     """
-    Accepts a PDF upload, validates it, saves it securely, runs static
-    analysis, and returns the full security report.
+    Accepts a PDF upload, validates it, checks 100MB file size limit,
+    saves it securely, runs static analysis, and returns the scan ID.
 
     Security measures:
-    - Validates the file extension is .pdf
-    - Strips the original filename and replaces it with a UUID
-      to prevent path traversal attacks.
+    - Validates file extension is .pdf
+    - Enforces 100MB maximum file size limit (HTTP 413 Payload Too Large)
+    - Strips original filename and replaces with UUID to prevent path traversal
+    - Optional password authentication for encrypted PDF decryption
     """
 
-    # --- Validation: Only accept PDF files ---
+    # Validation: Only accept PDF files
     if not file.filename.lower().endswith(".pdf"):
         raise HTTPException(
             status_code=400,
             detail="Invalid file type. Only PDF files are accepted."
         )
 
-    # --- Secure Storage: Replace original name with a random UUID ---
+    contents = await file.read()
+
+    # Server Hardening: Enforce 100 MB Maximum File Size Limit
+    if len(contents) > MAX_FILE_SIZE:
+        raise HTTPException(
+            status_code=413,
+            detail="File size exceeds maximum allowed limit of 100 MB."
+        )
+
+    # Secure Storage: Replace original name with a random UUID
     safe_filename = f"{uuid.uuid4().hex}.pdf"
     file_path = os.path.join(UPLOAD_DIR, safe_filename)
 
-    contents = await file.read()
     with open(file_path, "wb") as f:
         f.write(contents)
 
-    # --- Create initial pending scan record in database ---
+    # Create initial pending scan record in database
     scan_record = Scan(
         original_filename=file.filename,
         stored_filename=safe_filename,
@@ -99,19 +110,19 @@ async def upload_pdf(file: UploadFile = File(...), db: Session = Depends(get_db)
     db.commit()
     db.refresh(scan_record)
 
-    # --- Run analysis (Celery async dispatch with sync fallback) ---
+    # Run analysis (Celery async dispatch with sync fallback)
     try:
         from celery_worker import process_pdf_scan
-        process_pdf_scan.delay(scan_record.id, file_path)
+        process_pdf_scan.delay(scan_record.id, file_path, password)
         message = "File uploaded and task queued for Celery analysis."
-    except Exception as err:
+    except Exception:
         # Fallback to direct synchronous execution if Celery dispatch fails
-        analysis_report = analyze_pdf(file_path)
+        analysis_report = analyze_pdf(file_path, password=password)
         scan_record.verdict = analysis_report["verdict"]
         scan_record.risk_score = analysis_report["risk_score"]
         scan_record.is_encrypted = 1 if analysis_report["is_encrypted"] else 0
         scan_record.page_count = analysis_report.get("page_count")
-        scan_record.author = report.get("author") if (report := analysis_report) else None
+        scan_record.author = analysis_report.get("author")
         scan_record.analysis_summary = json.dumps(analysis_report)
         scan_record.status = "COMPLETED"
         db.commit()
@@ -129,14 +140,23 @@ async def upload_pdf(file: UploadFile = File(...), db: Session = Depends(get_db)
 
 
 @app.get("/api/scans", tags=["History"])
-def get_scan_history(db: Session = Depends(get_db)):
+def get_scan_history(
+    limit: Optional[int] = Query(None, ge=1, le=100),
+    offset: Optional[int] = Query(0, ge=0),
+    db: Session = Depends(get_db)
+):
     """
-    Returns a list of all previously scanned files with their verdicts.
-    Used to populate the scan history dashboard on the frontend.
+    Returns historical scan logs with optional server-side pagination (limit & offset).
     """
-    scans = db.query(Scan).order_by(Scan.upload_time.desc()).all()
+    query = db.query(Scan).order_by(Scan.upload_time.desc())
+    total_count = query.count()
 
-    return [
+    if limit is not None:
+        query = query.offset(offset).limit(limit)
+
+    scans = query.all()
+
+    scans_list = [
         {
             "id": s.id,
             "original_filename": s.original_filename,
@@ -151,12 +171,19 @@ def get_scan_history(db: Session = Depends(get_db)):
         for s in scans
     ]
 
+    if limit is not None:
+        return {
+            "total": total_count,
+            "scans": scans_list
+        }
+    return scans_list
+
 
 @app.get("/api/scans/{scan_id}", tags=["Analysis"])
 def get_single_scan(scan_id: int, db: Session = Depends(get_db)):
     """
     Returns the status and full security report for a specific scan ID.
-    Used by the frontend polling loop to track asynchronous task progress.
+    Used by the frontend polling loop and detail modal window.
     """
     scan = db.query(Scan).filter(Scan.id == scan_id).first()
     if not scan:
@@ -167,6 +194,7 @@ def get_single_scan(scan_id: int, db: Session = Depends(get_db)):
     return {
         "scan_id": scan.id,
         "original_filename": scan.original_filename,
+        "upload_time": scan.upload_time.isoformat() if scan.upload_time else None,
         "status": scan.status or "COMPLETED",
         "verdict": scan.verdict,
         "risk_score": scan.risk_score,
