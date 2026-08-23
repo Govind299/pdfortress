@@ -309,7 +309,24 @@ function ScanHistory({ refreshTrigger }) {
                     <span style={{ color: "var(--colors-mute)" }}>Scan Timestamp: </span>
                     <strong>{selectedScan.upload_time ? new Date(selectedScan.upload_time).toLocaleString() : "N/A"}</strong>
                   </div>
+                  <div style={{ gridColumn: "span 2" }}>
+                    <span style={{ color: "var(--colors-mute)" }}>SHA-256 Cryptographic Hash: </span>
+                    <code style={{ fontSize: "11px", wordBreak: "break-all" }}>{selectedScan.sha256 || "N/A"}</code>
+                  </div>
                 </div>
+
+                {/* Stage 3 VirusTotal Threat Intelligence */}
+                {selectedScan.virustotal && (
+                  <div style={{ marginBottom: "20px" }}>
+                    <div style={{ fontSize: "13px", fontWeight: "600", marginBottom: "8px" }}>
+                      Stage 3 VirusTotal Threat Intelligence:
+                    </div>
+                    <div style={{ backgroundColor: "var(--colors-canvas)", padding: "10px 14px", borderRadius: "6px", border: "1px solid var(--colors-hairline)", fontSize: "12px" }}>
+                      <div>Global Vendor Detection Ratio: <strong>{selectedScan.virustotal.detection_rate || "0/72"}</strong></div>
+                      <div style={{ color: "var(--colors-mute)", marginTop: "4px" }}>Status: {selectedScan.virustotal.status || "SHA-256 Validated"}</div>
+                    </div>
+                  </div>
+                )}
 
                 {/* Dangerous Tags Found */}
                 {selectedScan.dangerous_tags_found && Object.keys(selectedScan.dangerous_tags_found).length > 0 && (

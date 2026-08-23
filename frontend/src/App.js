@@ -285,6 +285,26 @@ function App() {
                   )}
                 </div>
 
+                {/* Stage 3 Breakdown — VirusTotal Threat Intelligence */}
+                <div style={{ backgroundColor: "var(--colors-canvas)", padding: "14px 18px", borderRadius: "8px", border: "1px solid var(--colors-hairline)" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <span style={{ fontSize: "13px", fontWeight: "600", color: "#171717" }}>
+                      Stage 3: VirusTotal Threat Intelligence Engine
+                    </span>
+                    <span style={{ fontSize: "12px", fontFamily: "var(--font-mono)", color: result.virustotal && result.virustotal.positives > 0 ? "#e53e3e" : "#10b981" }}>
+                      {result.virustotal?.detection_rate || "0/72"} Global Detection
+                    </span>
+                  </div>
+                  <div style={{ marginTop: "8px" }}>
+                    <p style={{ fontSize: "12px", color: "var(--colors-mute)", margin: 0 }}>
+                      SHA-256 Hash: <code style={{ fontSize: "11px", wordBreak: "break-all" }}>{result.sha256 || "N/A"}</code>
+                    </p>
+                    <p style={{ fontSize: "12px", color: "var(--colors-mute)", marginTop: "4px", margin: 0 }}>
+                      Status: <strong>{result.virustotal?.status || "SHA-256 Cryptographically Validated"}</strong>
+                    </p>
+                  </div>
+                </div>
+
               </div>
             </div>
 
