@@ -3,7 +3,7 @@ main.py
 -------
 FastAPI REST API server for PDFortress.
 Handles file uploads, runs analysis (via Celery or direct fallback),
-and serves scan status and history endpoints to the React frontend.
+enforces IP rate-limiting, and serves scan endpoints to the React frontend.
 
 Author: Raj Patel (23DIT050) & Govind Suthar (D24DIT094)
 """
@@ -11,9 +11,12 @@ Author: Raj Patel (23DIT050) & Govind Suthar (D24DIT094)
 import os
 import uuid
 import json
+import time
+from collections import defaultdict
 from typing import Optional
-from fastapi import FastAPI, File, UploadFile, Form, HTTPException, Depends, Query
+from fastapi import FastAPI, File, UploadFile, Form, HTTPException, Depends, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
 from database import get_db, init_db, Scan
@@ -34,12 +37,47 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# -------------------------------------------------------------------
+# Server Hardening & API Rate Limiting (Raj Patel - 23DIT050)
+# -------------------------------------------------------------------
+MAX_FILE_SIZE = 100 * 1024 * 1024  # 100 MB Limit
+RATE_LIMIT_DURATION = 60          # 60 seconds window
+MAX_UPLOADS_PER_MINUTE = 10        # Max 10 uploads per minute per IP
+
+client_upload_timestamps = defaultdict(list)
+
+@app.middleware("http")
+async def rate_limit_middleware(request: Request, call_next):
+    """
+    Enforces IP-based request throttling on POST /api/upload.
+    Restricts client IP to a maximum of 10 uploads per minute.
+    Returns HTTP 429 Too Many Requests when rate limit is exceeded.
+    """
+    if request.url.path == "/api/upload" and request.method == "POST":
+        client_ip = request.client.host if request.client else "127.0.0.1"
+        now = time.time()
+
+        # Clean up timestamps older than 60s
+        client_upload_timestamps[client_ip] = [
+            t for t in client_upload_timestamps[client_ip] if now - t < RATE_LIMIT_DURATION
+        ]
+
+        if len(client_upload_timestamps[client_ip]) >= MAX_UPLOADS_PER_MINUTE:
+            return JSONResponse(
+                status_code=429,
+                content={
+                    "detail": f"API Rate Limit Exceeded. Maximum {MAX_UPLOADS_PER_MINUTE} uploads per minute per IP allowed."
+                }
+            )
+        client_upload_timestamps[client_ip].append(now)
+
+    response = await call_next(request)
+    return response
+
+
 # Directory where uploaded PDFs will be saved
 UPLOAD_DIR = "uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
-
-# 100 MB Maximum File Size Limit (Server Hardening)
-MAX_FILE_SIZE = 100 * 1024 * 1024
 
 # Create database tables on startup
 init_db()
@@ -65,12 +103,13 @@ async def upload_pdf(
     db: Session = Depends(get_db)
 ):
     """
-    Accepts a PDF upload, validates it, checks 100MB file size limit,
+    Accepts a PDF upload, validates it, checks 100MB file size limit & IP rate limit,
     saves it securely, runs static analysis, and returns the scan ID.
 
     Security measures:
     - Validates file extension is .pdf
     - Enforces 100MB maximum file size limit (HTTP 413 Payload Too Large)
+    - Enforces IP Rate-Limiting (HTTP 429 Too Many Requests)
     - Strips original filename and replaces with UUID to prevent path traversal
     - Optional password authentication for encrypted PDF decryption
     """
@@ -201,7 +240,9 @@ def get_single_scan(scan_id: int, db: Session = Depends(get_db)):
         "is_encrypted": bool(scan.is_encrypted),
         "page_count": scan.page_count,
         "author": scan.author,
+        "sha256": summary.get("sha256", ""),
         "dangerous_tags_found": summary.get("dangerous_tags_found", {}),
         "yara_matches": summary.get("yara_matches", []),
+        "virustotal": summary.get("virustotal", {}),
         "warnings": summary.get("warnings", []),
     }
