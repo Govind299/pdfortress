@@ -381,13 +381,45 @@ function ScanHistory({ refreshTrigger }) {
                   </pre>
                 </div>
 
-                <div style={{ marginTop: "20px", textAlign: "right" }}>
+                <div style={{ marginTop: "20px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <div style={{ display: "flex", gap: "10px" }}>
+                    <button
+                      onClick={() => window.open(`${API_BASE}/api/scans/${selectedScan.scan_id || selectedScan.id}/export/pdf`, "_blank")}
+                      style={{
+                        padding: "8px 16px",
+                        backgroundColor: "#0070f3",
+                        color: "#ffffff",
+                        border: "none",
+                        borderRadius: "6px",
+                        fontSize: "13px",
+                        fontWeight: "500",
+                        cursor: "pointer"
+                      }}
+                    >
+                      📥 Download PDF Report
+                    </button>
+                    <button
+                      onClick={() => window.open(`${API_BASE}/api/scans/${selectedScan.scan_id || selectedScan.id}/export/json`, "_blank")}
+                      style={{
+                        padding: "8px 16px",
+                        backgroundColor: "var(--colors-canvas-elevated)",
+                        color: "var(--colors-ink)",
+                        border: "1px solid var(--colors-hairline)",
+                        borderRadius: "6px",
+                        fontSize: "13px",
+                        fontWeight: "500",
+                        cursor: "pointer"
+                      }}
+                    >
+                      📄 Export JSON Audit
+                    </button>
+                  </div>
                   <button
                     onClick={() => setSelectedScan(null)}
                     style={{
                       padding: "8px 20px",
-                      backgroundColor: "#171717",
-                      color: "#ffffff",
+                      backgroundColor: "var(--colors-primary)",
+                      color: "var(--colors-on-primary)",
                       border: "none",
                       borderRadius: "6px",
                       fontSize: "13px",
@@ -398,6 +430,7 @@ function ScanHistory({ refreshTrigger }) {
                     Close Inspector
                   </button>
                 </div>
+
               </>
             )}
           </div>

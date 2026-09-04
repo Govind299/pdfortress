@@ -20,6 +20,19 @@ function App() {
   const [error, setError] = useState(null);
   const [refreshHistory, setRefreshHistory] = useState(0);
 
+  // --- Dark / Light Mode Theme Persistence (Khushali Desai - 23DIT050) ---
+  const [theme, setTheme] = useState(() => localStorage.getItem("pdfortress_theme") || "light");
+
+  useEffect(() => {
+    document.documentElement.setAttribute("data-theme", theme);
+    localStorage.setItem("pdfortress_theme", theme);
+  }, [theme]);
+
+  const toggleTheme = () => {
+    setTheme((prev) => (prev === "light" ? "dark" : "light"));
+  };
+
+
   // --- Suppress third-party browser extension errors (MetaMask, etc.) ---
   useEffect(() => {
     const handleUnhandledRejection = (event) => {
@@ -83,23 +96,27 @@ function App() {
       const scanId = uploadData.scan_id;
 
       // Simulated multi-stage security sequence for realistic inspection feedback
-      await new Promise((r) => setTimeout(r, 900));
+      await new Promise((r) => setTimeout(r, 600));
       setScanStage("Stage 2: Executing compiled YARA signature rules & heuristic checks...");
 
-      await new Promise((r) => setTimeout(r, 900));
+      await new Promise((r) => setTimeout(r, 600));
       setScanStage("Stage 3: Compiling threat assessment and risk report...");
 
-      // Fetch completed scan report
-      const res = await fetch(`${API_BASE}/api/scans/${scanId}`);
+      // Fetch completed scan report if additional details needed
       let finalData = uploadData;
-      if (res.ok) {
-        finalData = await res.json();
+      try {
+        const res = await fetch(`${API_BASE}/api/scans/${scanId}`);
+        if (res.ok) {
+          const detailData = await res.json();
+          finalData = { ...uploadData, ...detailData };
+        }
+      } catch (e) {
+        // Use upload response as fallback
       }
 
-      await new Promise((r) => setTimeout(r, 500));
+      await new Promise((r) => setTimeout(r, 300));
 
       setResult(finalData);
-      setIsLoading(false);
       setRefreshHistory((prev) => prev + 1);
 
       // Auto-scroll smoothly to report section
@@ -112,9 +129,11 @@ function App() {
 
     } catch (err) {
       setError(err.message || "Could not connect to the analysis server.");
+    } finally {
       setIsLoading(false);
     }
   };
+
 
   return (
     <div className="geist-page-container">
@@ -129,6 +148,11 @@ function App() {
           <li><a href="#scanner" className="geist-nav-link">Scanner</a></li>
           <li><a href="#history" className="geist-nav-link">Scan Logs</a></li>
           <li><a href="#features" className="geist-nav-link">Features</a></li>
+          <li>
+            <button onClick={toggleTheme} className="geist-theme-toggle-btn" style={{ marginLeft: "8px" }}>
+              {theme === "light" ? "🌙 Dark Mode" : "☀️ Light Mode"}
+            </button>
+          </li>
         </ul>
       </nav>
 
@@ -190,10 +214,29 @@ function App() {
                   {result.original_filename}
                 </h2>
               </div>
-              <span className={`geist-badge-verdict verdict-${result.verdict}`}>
-                {result.verdict}
-              </span>
+              <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                <span className={`geist-badge-verdict verdict-${result.verdict}`}>
+                  {result.verdict}
+                </span>
+              </div>
             </div>
+
+            {/* Visual Action Buttons — Report Exporters (Khushali Desai - 23DIT050) */}
+            <div style={{ display: "flex", gap: "10px", marginTop: "16px", paddingBottom: "16px", borderBottom: "1px solid var(--colors-hairline)" }}>
+              <button
+                className="geist-btn-action geist-btn-primary-action"
+                onClick={() => window.open(`${API_BASE}/api/scans/${result.scan_id || result.id}/export/pdf`, "_blank")}
+              >
+                📥 Download PDF Report
+              </button>
+              <button
+                className="geist-btn-action"
+                onClick={() => window.open(`${API_BASE}/api/scans/${result.scan_id || result.id}/export/json`, "_blank")}
+              >
+                📄 Export JSON Audit
+              </button>
+            </div>
+
 
             {/* Quick Metrics */}
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: "16px", marginTop: "24px" }}>

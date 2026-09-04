@@ -461,3 +461,76 @@ body {
   color: var(--colors-mute);
   text-transform: uppercase;
 }
+
+/* ==========================================================================
+   Dark Mode Theme & Smooth State Transitions (Khushali Desai - 23DIT050)
+   ========================================================================== */
+
+[data-theme="dark"] {
+  --colors-primary: #ffffff;
+  --colors-on-primary: #000000;
+  --colors-ink: #ededed;
+  --colors-body: #a1a1a1;
+  --colors-mute: #707070;
+  --colors-faint: #444444;
+  --colors-hairline: #262626;
+  --colors-hairline-soft: #1a1a1a;
+  --colors-canvas: #0a0a0a;
+  --colors-canvas-elevated: #121212;
+  --colors-link: #3291ff;
+  --colors-link-deep: #0070f3;
+  --colors-link-soft: #00254d;
+}
+
+body, .geist-page-container, .geist-navbar, .geist-report-card, .geist-feature-card {
+  transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease;
+}
+
+.geist-theme-toggle-btn {
+  background-color: var(--colors-canvas-elevated);
+  color: var(--colors-ink);
+  border: 1px solid var(--colors-hairline);
+  padding: 6px 14px;
+  border-radius: 9999px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.geist-theme-toggle-btn:hover {
+  border-color: var(--colors-ink);
+}
+
+.geist-btn-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  border: 1px solid var(--colors-hairline);
+  background-color: var(--colors-canvas-elevated);
+  color: var(--colors-ink);
+  transition: all 0.2s ease;
+}
+
+.geist-btn-action:hover {
+  background-color: var(--colors-hairline-soft);
+  border-color: var(--colors-ink);
+}
+
+.geist-btn-primary-action {
+  background-color: var(--colors-primary);
+  color: var(--colors-on-primary);
+  border: 1px solid var(--colors-primary);
+}
+
+.geist-btn-primary-action:hover {
+  opacity: 0.9;
+}
+
