@@ -29,7 +29,10 @@ celery_app.conf.update(
     result_serializer="json",
     timezone="UTC",
     enable_utc=True,
+    broker_transport_options={"protocol": 2},
+    result_backend_transport_options={"protocol": 2},
 )
+
 
 
 @celery_app.task(name="tasks.process_pdf_scan")

@@ -13,14 +13,16 @@ import uuid
 import json
 import time
 from collections import defaultdict
-from typing import Optional
-from fastapi import FastAPI, File, UploadFile, Form, HTTPException, Depends, Query, Request
+from typing import Optional, List
+from fastapi import FastAPI, File, UploadFile, Form, HTTPException, Depends, Query, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
-from database import get_db, init_db, Scan
+from database import get_db, init_db, Scan, cleanup_expired_scans
 from analyzer import analyze_pdf
+from report_exporter import export_json_report, export_pdf_report
+
 
 app = FastAPI(
     title="PDFortress API",
@@ -149,13 +151,23 @@ async def upload_pdf(
     db.commit()
     db.refresh(scan_record)
 
-    # Run analysis (Celery async dispatch with sync fallback)
+    analysis_report = {}
+
+    # Run analysis (Celery async dispatch if Redis is online, otherwise instant fallback)
+    celery_queued = False
     try:
-        from celery_worker import process_pdf_scan
-        process_pdf_scan.delay(scan_record.id, file_path, password)
-        message = "File uploaded and task queued for Celery analysis."
+        import redis
+        r = redis.Redis(host="localhost", port=6379, socket_connect_timeout=0.1)
+        if r.ping():
+            from celery_worker import process_pdf_scan
+            process_pdf_scan.delay(scan_record.id, file_path, password)
+            message = "File uploaded and task queued for Celery analysis."
+            celery_queued = True
     except Exception:
-        # Fallback to direct synchronous execution if Celery dispatch fails
+        celery_queued = False
+
+    if not celery_queued:
+        # Instant microsecond fallback execution if Redis is offline
         analysis_report = analyze_pdf(file_path, password=password)
         scan_record.verdict = analysis_report["verdict"]
         scan_record.risk_score = analysis_report["risk_score"]
@@ -174,8 +186,18 @@ async def upload_pdf(
         "original_filename": file.filename,
         "verdict": scan_record.verdict,
         "risk_score": scan_record.risk_score,
-        "status": scan_record.status
+        "status": scan_record.status,
+        "is_encrypted": bool(scan_record.is_encrypted),
+        "page_count": scan_record.page_count,
+        "author": scan_record.author,
+        "sha256": analysis_report.get("sha256", ""),
+        "dangerous_tags_found": analysis_report.get("dangerous_tags_found", {}),
+        "yara_matches": analysis_report.get("yara_matches", []),
+        "virustotal": analysis_report.get("virustotal", {}),
+        "warnings": analysis_report.get("warnings", [])
     }
+
+
 
 
 @app.get("/api/scans", tags=["History"])
@@ -246,3 +268,193 @@ def get_single_scan(scan_id: int, db: Session = Depends(get_db)):
         "virustotal": summary.get("virustotal", {}),
         "warnings": summary.get("warnings", []),
     }
+
+
+# -------------------------------------------------------------------
+# Week 8 Additions: Batch Endpoints, Exporters & DB Cleanup (Raj Patel)
+# -------------------------------------------------------------------
+
+@app.post("/api/upload/batch", tags=["Analysis"])
+async def upload_pdf_batch(
+    files: List[UploadFile] = File(...),
+    db: Session = Depends(get_db)
+):
+    """
+    Accepts concurrent multi-file PDF payload arrays, assigns a batch tracking UUID,
+    and queues all documents for security analysis.
+    Author: Raj Patel (23DIT007)
+    """
+    if not files:
+        raise HTTPException(status_code=400, detail="No files provided in batch upload request.")
+
+    batch_id = uuid.uuid4().hex
+    queued_scans = []
+
+    for file in files:
+        if not file.filename.lower().endswith(".pdf"):
+            continue
+
+        contents = await file.read()
+        if len(contents) > MAX_FILE_SIZE:
+            continue
+
+        safe_filename = f"{uuid.uuid4().hex}.pdf"
+        file_path = os.path.join(UPLOAD_DIR, safe_filename)
+
+        with open(file_path, "wb") as f:
+            f.write(contents)
+
+        scan_record = Scan(
+            original_filename=file.filename,
+            stored_filename=safe_filename,
+            status="PENDING",
+            verdict="Processing...",
+            risk_score=0.0,
+            batch_id=batch_id
+        )
+        db.add(scan_record)
+        db.commit()
+        db.refresh(scan_record)
+
+        # Run analysis (direct synchronous fallback or celery)
+        analysis_report = analyze_pdf(file_path)
+        scan_record.verdict = analysis_report["verdict"]
+        scan_record.risk_score = analysis_report["risk_score"]
+        scan_record.is_encrypted = 1 if analysis_report["is_encrypted"] else 0
+        scan_record.page_count = analysis_report.get("page_count")
+        scan_record.author = analysis_report.get("author")
+        scan_record.analysis_summary = json.dumps(analysis_report)
+        scan_record.status = "COMPLETED"
+        db.commit()
+
+        queued_scans.append({
+            "scan_id": scan_record.id,
+            "filename": scan_record.original_filename,
+            "verdict": scan_record.verdict,
+            "risk_score": scan_record.risk_score
+        })
+
+    return {
+        "batch_id": batch_id,
+        "total_files": len(files),
+        "processed_count": len(queued_scans),
+        "scans": queued_scans
+    }
+
+
+@app.get("/api/scans/batch/{batch_id}", tags=["Analysis"])
+def get_batch_status(batch_id: str, db: Session = Depends(get_db)):
+    """
+    Delivers aggregated completion status, item counts, and scan IDs for a batch job.
+    Author: Raj Patel (23DIT007)
+    """
+    scans = db.query(Scan).filter(Scan.batch_id == batch_id).all()
+    if not scans:
+        raise HTTPException(status_code=404, detail=f"No batch found with ID {batch_id}")
+
+    completed = sum(1 for s in scans if s.status == "COMPLETED")
+    
+    return {
+        "batch_id": batch_id,
+        "total_items": len(scans),
+        "completed_items": completed,
+        "status": "COMPLETED" if completed == len(scans) else "PROCESSING",
+        "scans": [
+            {
+                "scan_id": s.id,
+                "filename": s.original_filename,
+                "verdict": s.verdict,
+                "risk_score": s.risk_score,
+                "status": s.status
+            }
+            for s in scans
+        ]
+    }
+
+
+@app.get("/api/scans/{scan_id}/export/pdf", tags=["Reporting"])
+def export_pdf_security_report(scan_id: int, db: Session = Depends(get_db)):
+    """
+    Generates and downloads a structured PDF security audit report.
+    Author: Govind Suthar (D24DIT094)
+    """
+    scan = db.query(Scan).filter(Scan.id == scan_id).first()
+    if not scan:
+        raise HTTPException(status_code=404, detail="Scan record not found")
+
+    summary = json.loads(scan.analysis_summary) if scan.analysis_summary else {}
+    scan_data = {
+        "scan_id": scan.id,
+        "original_filename": scan.original_filename,
+        "upload_time": scan.upload_time.isoformat() if scan.upload_time else "",
+        "verdict": scan.verdict,
+        "risk_score": scan.risk_score,
+        "is_encrypted": bool(scan.is_encrypted),
+        "page_count": scan.page_count,
+        "author": scan.author,
+        "sha256": summary.get("sha256", ""),
+        "dangerous_tags_found": summary.get("dangerous_tags_found", {}),
+        "yara_matches": summary.get("yara_matches", []),
+        "virustotal": summary.get("virustotal", {}),
+        "warnings": summary.get("warnings", [])
+    }
+
+    pdf_bytes = export_pdf_report(scan_data)
+    filename = f"PDFortress_Audit_Scan_{scan_id}.pdf"
+
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'}
+    )
+
+
+@app.get("/api/scans/{scan_id}/export/json", tags=["Reporting"])
+def export_json_security_report(scan_id: int, db: Session = Depends(get_db)):
+    """
+    Generates and downloads a structured JSON security audit report.
+    Author: Govind Suthar (D24DIT094)
+    """
+    scan = db.query(Scan).filter(Scan.id == scan_id).first()
+    if not scan:
+        raise HTTPException(status_code=404, detail="Scan record not found")
+
+    summary = json.loads(scan.analysis_summary) if scan.analysis_summary else {}
+    scan_data = {
+        "scan_id": scan.id,
+        "original_filename": scan.original_filename,
+        "upload_time": scan.upload_time.isoformat() if scan.upload_time else "",
+        "verdict": scan.verdict,
+        "risk_score": scan.risk_score,
+        "is_encrypted": bool(scan.is_encrypted),
+        "page_count": scan.page_count,
+        "author": scan.author,
+        "sha256": summary.get("sha256", ""),
+        "dangerous_tags_found": summary.get("dangerous_tags_found", {}),
+        "yara_matches": summary.get("yara_matches", []),
+        "virustotal": summary.get("virustotal", {}),
+        "warnings": summary.get("warnings", [])
+    }
+
+    json_bytes = export_json_report(scan_data)
+    filename = f"PDFortress_Audit_Scan_{scan_id}.json"
+
+    return Response(
+        content=json_bytes,
+        media_type="application/json",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'}
+    )
+
+
+@app.post("/api/admin/cleanup", tags=["System"])
+def trigger_server_cleanup(hours: int = 24):
+    """
+    Triggers automated cleanup of temporary files and database logs older than specified hours.
+    Author: Raj Patel (23DIT007)
+    """
+    result = cleanup_expired_scans(hours=hours, upload_dir=UPLOAD_DIR)
+    return {
+        "status": "success",
+        "message": f"Cleaned {result['cleaned_files']} temporary files and {result['cleaned_records']} expired database records older than {hours} hours."
+    }
+

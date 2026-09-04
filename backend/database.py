@@ -7,7 +7,7 @@ PostgreSQL can be swapped in for production by changing DATABASE_URL.
 Author: Khushali (D24DIT007)
 """
 
-from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, Text
+from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, Text, text
 from sqlalchemy.orm import declarative_base, sessionmaker
 from datetime import datetime
 
@@ -43,11 +43,19 @@ class Scan(Base):
     is_encrypted = Column(Integer, default=0)                 # 0=No, 1=Yes (SQLite has no bool)
     page_count = Column(Integer, nullable=True)
     author = Column(String, nullable=True)
+    batch_id = Column(String, nullable=True, index=True)      # Batch upload tracking UUID
 
 
 def init_db():
-    """Creates all database tables if they don't already exist."""
+    """Creates all database tables if they don't already exist and handles column migration."""
     Base.metadata.create_all(bind=engine)
+    try:
+        with engine.connect() as conn:
+            conn.execute(text("ALTER TABLE scans ADD COLUMN batch_id TEXT"))
+            conn.commit()
+    except Exception:
+        pass
+
 
 
 def get_db():
@@ -60,3 +68,40 @@ def get_db():
         yield db
     finally:
         db.close()
+
+
+def cleanup_expired_scans(hours: int = 24, upload_dir: str = "uploads") -> dict:
+    """
+    Server-side cleanup routine.
+    Purges temporary file uploads and database records older than specified hours (default 24h).
+    Author: Raj Patel (23DIT007)
+    """
+    import os
+    from datetime import timedelta
+    db = SessionLocal()
+    cleaned_files = 0
+    cleaned_records = 0
+    try:
+        cutoff = datetime.utcnow() - timedelta(hours=hours)
+        expired_scans = db.query(Scan).filter(Scan.upload_time < cutoff).all()
+
+        for scan in expired_scans:
+            if scan.stored_filename:
+                file_path = os.path.join(upload_dir, scan.stored_filename)
+                if os.path.exists(file_path):
+                    try:
+                        os.remove(file_path)
+                        cleaned_files += 1
+                    except Exception:
+                        pass
+            db.delete(scan)
+            cleaned_records += 1
+
+        db.commit()
+    except Exception:
+        db.rollback()
+    finally:
+        db.close()
+
+    return {"cleaned_files": cleaned_files, "cleaned_records": cleaned_records}
+
