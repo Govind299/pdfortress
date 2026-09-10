@@ -11,6 +11,79 @@ import "./App.css";
 
 const API_BASE = "http://127.0.0.1:8000";
 
+// --- Animated Circular SVG Risk Score Gauge (Khushali Desai - 23DIT050) ---
+function RiskGaugeSVG({ score, verdict }) {
+  const radius = 38;
+  const circumference = 2 * Math.PI * radius;
+  const clampedScore = Math.min(100, Math.max(0, score || 0));
+  const strokeDashoffset = circumference - (clampedScore / 100) * circumference;
+
+  let color = "#10b981"; // Safe Green
+  if (clampedScore > 70 || verdict === "Malicious") color = "#ee0000"; // Malicious Red
+  else if (clampedScore > 30 || verdict === "Suspicious") color = "#f5a623"; // Amber Warning
+
+  return (
+    <div style={{ position: "relative", width: "90px", height: "90px", display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <svg width="90" height="90" viewBox="0 0 90 90">
+        <circle cx="45" cy="45" r={radius} stroke="var(--colors-hairline)" strokeWidth="7" fill="none" />
+        <circle
+          cx="45"
+          cy="45"
+          r={radius}
+          stroke={color}
+          strokeWidth="7"
+          fill="none"
+          strokeDasharray={circumference}
+          strokeDashoffset={strokeDashoffset}
+          strokeLinecap="round"
+          style={{ transition: "stroke-dashoffset 0.8s ease-in-out, stroke 0.3s ease" }}
+          transform="rotate(-90 45 45)"
+        />
+      </svg>
+      <div style={{ position: "absolute", textAlign: "center" }}>
+        <div style={{ fontSize: "18px", fontWeight: "700", color: color, lineHeight: 1 }}>{Math.round(clampedScore)}</div>
+        <div style={{ fontSize: "9px", color: "var(--colors-mute)", fontFamily: "var(--font-mono)", marginTop: "2px" }}>/ 100</div>
+      </div>
+    </div>
+  );
+}
+
+// --- 3-Stage Visual Pass/Fail Summary Timeline (Khushali Desai - 23DIT050) ---
+function StageTimeline({ result }) {
+  const stage1Pass = Object.keys(result.dangerous_tags_found || {}).length === 0;
+  const stage2Pass = !result.yara_matches || result.yara_matches.length === 0;
+  const stage3Pass = !result.virustotal || result.virustotal.positives === 0;
+
+  return (
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px", marginTop: "20px", padding: "14px 18px", backgroundColor: "var(--colors-canvas)", borderRadius: "8px", border: "1px solid var(--colors-hairline)" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+        <span style={{ fontSize: "16px" }}>{stage1Pass ? "✅" : "⚠️"}</span>
+        <div>
+          <div style={{ fontSize: "12px", fontWeight: "600" }}>Stage 1: PyMuPDF</div>
+          <div style={{ fontSize: "11px", color: stage1Pass ? "#10b981" : "#ee0000" }}>{stage1Pass ? "Clean Structure" : "Tags Found"}</div>
+        </div>
+      </div>
+      <div style={{ height: "24px", width: "1px", backgroundColor: "var(--colors-hairline)" }} />
+      <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+        <span style={{ fontSize: "16px" }}>{stage2Pass ? "✅" : "🛡️"}</span>
+        <div>
+          <div style={{ fontSize: "12px", fontWeight: "600" }}>Stage 2: YARA Engine</div>
+          <div style={{ fontSize: "11px", color: stage2Pass ? "#10b981" : "#f5a623" }}>{stage2Pass ? "Zero Rule Hits" : `${result.yara_matches.length} Rule Hits`}</div>
+        </div>
+      </div>
+      <div style={{ height: "24px", width: "1px", backgroundColor: "var(--colors-hairline)" }} />
+      <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+        <span style={{ fontSize: "16px" }}>{stage3Pass ? "✅" : "🚨"}</span>
+        <div>
+          <div style={{ fontSize: "12px", fontWeight: "600" }}>Stage 3: VirusTotal</div>
+          <div style={{ fontSize: "11px", color: stage3Pass ? "#10b981" : "#ee0000" }}>{result.virustotal?.detection_rate || "0/72"} Global</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
 function App() {
   const [files, setFiles] = useState([]);
   const [password, setPassword] = useState("");
@@ -238,25 +311,29 @@ function App() {
             </div>
 
 
-            {/* Quick Metrics */}
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: "16px", marginTop: "24px" }}>
-              <div>
-                <div style={{ fontSize: "12px", fontFamily: "var(--font-mono)", color: "var(--colors-mute)" }}>RISK SCORE</div>
-                <div style={{ fontSize: "24px", fontWeight: 600 }}>{result.risk_score} / 100</div>
-              </div>
+            {/* Quick Metrics & Risk Gauge */}
+            <div style={{ display: "grid", gridTemplateColumns: "100px 1fr 1fr 1fr", gap: "16px", marginTop: "24px", alignItems: "center" }}>
+              <RiskGaugeSVG score={result.risk_score} verdict={result.verdict} />
+
               <div>
                 <div style={{ fontSize: "12px", fontFamily: "var(--font-mono)", color: "var(--colors-mute)" }}>PAGE COUNT</div>
-                <div style={{ fontSize: "24px", fontWeight: 600 }}>{result.page_count ?? "N/A"}</div>
+                <div style={{ fontSize: "22px", fontWeight: 600 }}>{result.page_count ?? "N/A"}</div>
               </div>
+
               <div>
                 <div style={{ fontSize: "12px", fontFamily: "var(--font-mono)", color: "var(--colors-mute)" }}>AUTHOR METADATA</div>
                 <div style={{ fontSize: "14px", fontWeight: 500, wordBreak: "break-all" }}>{result.author ?? "None / Unspecified"}</div>
               </div>
+
               <div>
                 <div style={{ fontSize: "12px", fontFamily: "var(--font-mono)", color: "var(--colors-mute)" }}>STREAM ENCRYPTION</div>
-                <div style={{ fontSize: "24px", fontWeight: 600 }}>{result.is_encrypted ? "Yes" : "No"}</div>
+                <div style={{ fontSize: "22px", fontWeight: 600 }}>{result.is_encrypted ? "Yes" : "No"}</div>
               </div>
             </div>
+
+            {/* 3-Stage Visual Summary Timeline (Khushali Desai - 23DIT050) */}
+            <StageTimeline result={result} />
+
 
             {/* Detailed Stage-by-Stage Finding Breakdown */}
             <div style={{ marginTop: "28px", paddingTop: "20px", borderTop: "1px solid var(--colors-hairline)" }}>
