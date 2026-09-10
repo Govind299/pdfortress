@@ -14,10 +14,12 @@ import json
 import time
 from collections import defaultdict
 from typing import Optional, List
-from fastapi import FastAPI, File, UploadFile, Form, HTTPException, Depends, Query, Request, Response
+from fastapi import FastAPI, File, UploadFile, Form, HTTPException, Depends, Query, Request, Response, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
+from datetime import datetime
+
 
 from database import get_db, init_db, Scan, cleanup_expired_scans
 from analyzer import analyze_pdf
@@ -204,18 +206,49 @@ async def upload_pdf(
 def get_scan_history(
     limit: Optional[int] = Query(None, ge=1, le=100),
     offset: Optional[int] = Query(0, ge=0),
+    query: Optional[str] = Query(None, description="Search by filename or author"),
+    verdict: Optional[str] = Query(None, description="Filter by Safe, Suspicious, or Malicious"),
+    start_date: Optional[str] = Query(None, description="Filter start ISO date"),
+    end_date: Optional[str] = Query(None, description="Filter end ISO date"),
     db: Session = Depends(get_db)
 ):
     """
-    Returns historical scan logs with optional server-side pagination (limit & offset).
+    Returns historical scan logs with server-side pagination, search queries, and date-range filters.
+    Author: Raj Patel (23DIT007)
     """
-    query = db.query(Scan).order_by(Scan.upload_time.desc())
-    total_count = query.count()
+    db_query = db.query(Scan)
+
+    if query:
+        search_pattern = f"%{query}%"
+        db_query = db_query.filter(
+            (Scan.original_filename.ilike(search_pattern)) |
+            (Scan.author.ilike(search_pattern))
+        )
+
+    if verdict:
+        db_query = db_query.filter(Scan.verdict.ilike(verdict))
+
+    if start_date:
+        try:
+            dt_start = datetime.fromisoformat(start_date)
+            db_query = db_query.filter(Scan.upload_time >= dt_start)
+        except Exception:
+            pass
+
+    if end_date:
+        try:
+            dt_end = datetime.fromisoformat(end_date)
+            db_query = db_query.filter(Scan.upload_time <= dt_end)
+        except Exception:
+            pass
+
+    db_query = db_query.order_by(Scan.upload_time.desc())
+    total_count = db_query.count()
 
     if limit is not None:
-        query = query.offset(offset).limit(limit)
+        db_query = db_query.offset(offset).limit(limit)
 
-    scans = query.all()
+    scans = db_query.all()
 
     scans_list = [
         {
@@ -228,6 +261,7 @@ def get_scan_history(
             "is_encrypted": bool(s.is_encrypted),
             "page_count": s.page_count,
             "author": s.author,
+            "batch_id": getattr(s, "batch_id", None)
         }
         for s in scans
     ]
@@ -238,6 +272,7 @@ def get_scan_history(
             "scans": scans_list
         }
     return scans_list
+
 
 
 @app.get("/api/scans/{scan_id}", tags=["Analysis"])
