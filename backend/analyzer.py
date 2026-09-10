@@ -202,6 +202,45 @@ def _scan_yara_rules(file_path: str, pdf_bytes: bytes = None) -> list:
     return matched_rules
 
 
+def _compute_risk_score(dangerous_tags: dict, yara_matches: list, vt_result: dict, policy_weights: dict = None) -> tuple[float, str]:
+    """
+    Computes weighted aggregated risk score combining Stage 1, Stage 2, and Stage 3 indicators:
+      - Stage 1 Heuristics Weight: 40%
+      - Stage 2 YARA Signatures Weight: 35%
+      - Stage 3 VirusTotal Ratio Weight: 25%
+
+    Author: Govind Suthar (D24DIT094)
+    """
+    weights = policy_weights or {"heuristics": 0.40, "yara": 0.35, "virustotal": 0.25}
+
+    # Stage 1 Heuristic Score (0 - 100)
+    heuristics_raw = sum(RISK_WEIGHTS.get(tag, 10) * count for tag, count in dangerous_tags.items() if count > 0)
+    heuristics_score = min(100.0, float(heuristics_raw))
+
+    # Stage 2 YARA Signature Score (0 - 100)
+    yara_score = min(100.0, float(len(yara_matches) * 40.0))
+
+    # Stage 3 VirusTotal Threat Intel Score (0 - 100)
+    vt_score = float(vt_result.get("vt_score_addition", 0.0))
+    if vt_score == 0 and vt_result.get("positives", 0) > 0:
+        vt_score = min(100.0, (vt_result["positives"] / max(1, vt_result.get("total", 72))) * 100.0)
+
+    # Weighted Composite Formula
+    composite_score = (
+        (heuristics_score * weights["heuristics"]) +
+        (yara_score * weights["yara"]) +
+        (vt_score * weights["virustotal"])
+    )
+
+    # Force critical override for EICAR standard signature or severe payload matches
+    if vt_result.get("positives", 0) >= 50 or "EICAR_Antivirus_Test_Signature" in yara_matches:
+        composite_score = max(composite_score, 85.0)
+
+    final_score = round(composite_score, 2)
+    verdict = _compute_verdict(final_score)
+    return final_score, verdict
+
+
 def analyze_pdf(file_path: str, password: str = None) -> dict:
     """
     Main analysis function. Takes the path to a stored PDF and returns
@@ -219,57 +258,41 @@ def analyze_pdf(file_path: str, password: str = None) -> dict:
         "dangerous_tags_found": {},
         "yara_matches": [],
         "virustotal": {},
-        "warnings": [],
-        "analysis_successful": True,
+        "warnings": []
     }
 
-    pdf_bytes = None
-
-    # ------------------------------------------------------------------
-    # STEP 1: Open the PDF and extract metadata using PyMuPDF
-    # ------------------------------------------------------------------
+    # Open PDF with PyMuPDF
     try:
         doc = fitz.open(file_path)
     except Exception as e:
-        report["analysis_successful"] = False
-        report["warnings"].append(f"Could not open file: {str(e)}")
         report["verdict"] = VERDICT_SUSPICIOUS
         report["risk_score"] = 40.0
+        report["warnings"].append(f"Corrupted or invalid PDF structure: {str(e)}")
         return report
 
-    # ------------------------------------------------------------------
-    # STEP 2: Check for encryption (password protection & authentication)
-    # ------------------------------------------------------------------
+    # Decrypt encrypted PDF streams in RAM if password provided
     if doc.is_encrypted:
         report["is_encrypted"] = True
-        authenticated = False
         if password:
-            try:
-                authenticated = doc.authenticate(password)
-            except Exception:
-                authenticated = False
-
-            if not authenticated:
-                report["warnings"].append("Invalid password provided for encrypted PDF.")
+            if not doc.authenticate(password):
                 report["verdict"] = VERDICT_SUSPICIOUS
-                report["risk_score"] = 40.0
+                report["risk_score"] = 50.0
+                report["warnings"].append("Encrypted PDF: Password authentication failed.")
                 doc.close()
                 return report
-            else:
-                report["warnings"].append("Encrypted PDF successfully decrypted with user password for deep inspection.")
-                try:
-                    pdf_bytes = doc.tobytes()
-                except Exception:
-                    pass
         else:
-            report["warnings"].append(
-                "File is password-protected (encrypted). "
-                "Provide document password for deep structural analysis."
-            )
             report["verdict"] = VERDICT_SUSPICIOUS
             report["risk_score"] = 40.0
+            report["warnings"].append("Encrypted PDF stream detected. Password required to parse inner streams.")
             doc.close()
             return report
+
+    pdf_bytes = None
+    if report["is_encrypted"] and password:
+        try:
+            pdf_bytes = doc.tobytes()
+        except Exception:
+            pass
 
     # Extract PDF metadata & decompressed stream text
     metadata = doc.metadata
@@ -286,49 +309,32 @@ def analyze_pdf(file_path: str, password: str = None) -> dict:
 
     doc.close()
 
-    # ------------------------------------------------------------------
     # STEP 3: Scan raw/decrypted bytes for dangerous structural keywords (Stage 1)
-    # ------------------------------------------------------------------
     dangerous_tags, raw_content = _scan_raw_bytes(file_path, pdf_bytes=pdf_bytes)
     full_content_str = raw_content + "\n" + extracted_page_text
     report["dangerous_tags_found"] = dangerous_tags
 
-    # ------------------------------------------------------------------
     # STEP 4: YARA Signature Matching (Stage 2)
-    # ------------------------------------------------------------------
     yara_matches = _scan_yara_rules(file_path, pdf_bytes=pdf_bytes)
     if ("EICAR" in full_content_str or "ANTIVIRUS-TEST-FILE" in full_content_str) and "EICAR_Antivirus_Test_Signature" not in yara_matches:
         yara_matches.append("EICAR_Antivirus_Test_Signature")
     report["yara_matches"] = yara_matches
 
-    # ------------------------------------------------------------------
     # STEP 5: Cryptographic Hash & Stage 3 VirusTotal Intelligence
-    # ------------------------------------------------------------------
     sha256_hash = _compute_sha256(file_path, pdf_bytes=pdf_bytes)
     report["sha256"] = sha256_hash
 
     vt_result = _query_virustotal(sha256_hash, raw_content=full_content_str)
     report["virustotal"] = vt_result
 
-    # ------------------------------------------------------------------
-    # STEP 6: Aggregated Risk Score Math
-    # ------------------------------------------------------------------
-    total_score = 0.0
-    for tag, count in dangerous_tags.items():
-        if tag in RISK_WEIGHTS and count > 0:
-            total_score += RISK_WEIGHTS[tag]
+    # STEP 6: Weighted Aggregated Risk Score Math (Govind Suthar - D24DIT094)
+    final_score, verdict = _compute_risk_score(dangerous_tags, yara_matches, vt_result)
+    report["risk_score"] = final_score
+    report["verdict"] = verdict
 
-    # Add score for YARA matches (35 pts per matched YARA rule)
     if yara_matches:
-        total_score += len(yara_matches) * 35.0
         report["warnings"].append(f"YARA Rule Signatures Matched: {', '.join(yara_matches)}")
-
-    # Add score for Stage 3 VirusTotal Threat Intel
     if vt_result.get("vt_score_addition", 0) > 0:
-        total_score += vt_result["vt_score_addition"]
         report["warnings"].append(f"Stage 3 Threat Intel: {vt_result['status']}")
-
-    report["risk_score"] = round(total_score, 2)
-    report["verdict"] = _compute_verdict(total_score)
 
     return report
