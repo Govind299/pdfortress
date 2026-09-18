@@ -1,0 +1,35 @@
+# Dependencies
+node_modules/
+frontend/node_modules/
+venv/
+*/venv/
+
+# Environment and secrets
+.env
+backend/.env
+*.env
+
+# Python cache & compiled files
+__pycache__/
+*/__pycache__/
+*.py[cod]
+
+# Build outputs
+build/
+frontend/build/
+dist/
+
+# Databases & runtime storage
+*.db
+*.sqlite3
+dump.rdb
+backend/dump.rdb
+backend/uploads/
+uploads/
+
+# Logs
+*.log
+
+# Large benchmark and test files
+backend/large_105mb_test.pdf
+*large*.pdf

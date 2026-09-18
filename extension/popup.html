@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PDFortress Shield</title>
+  <link rel="stylesheet" href="popup.css" />
+</head>
+<body>
+  <div class="container">
+    <!-- Header -->
+    <header class="header">
+      <div class="brand">
+        <div class="logo-box">
+          <svg class="shield-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+            <path d="m9 12 2 2 4-4" />
+          </svg>
+        </div>
+        <div class="brand-text">
+          <h1>PDFortress <span class="badge-tag">SHIELD</span></h1>
+          <span class="subtext">Client-Side Threat Inspection</span>
+        </div>
+      </div>
+      <div id="apiStatus" class="status-badge checking">
+        <span class="dot"></span>
+        <span id="statusText">Connecting</span>
+      </div>
+    </header>
+
+    <!-- Upload Dropzone -->
+    <section id="uploadSection" class="upload-section">
+      <div id="dropZone" class="drop-zone">
+        <svg class="upload-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+          <path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242" />
+          <path d="M12 12v9" />
+          <path d="m16 16-4-4-4 4" />
+        </svg>
+        <p class="drop-title">Drop PDF to Inspect</p>
+        <p class="drop-subtitle">or <span class="browse-link">browse from device</span></p>
+        <input type="file" id="fileInput" accept=".pdf" />
+      </div>
+    </section>
+
+    <!-- Scanning State -->
+    <div id="loadingState" class="loading-state hidden">
+      <div class="spinner"></div>
+      <p class="loading-title">Analyzing PDF Structure...</p>
+      <p class="loading-sub">Inspecting raw objects, tags & byte headers</p>
+    </div>
+
+    <!-- Scan Results Card -->
+    <section id="resultSection" class="result-section hidden">
+      <div id="verdictCard" class="verdict-card">
+        <div class="verdict-header">
+          <span id="verdictBadge" class="verdict-pill">SAFE</span>
+          <span id="riskScore" class="risk-pill">0.0 / 100</span>
+        </div>
+
+        <div class="file-info">
+          <p id="resultFilename" class="file-name">document.pdf</p>
+          <div class="file-meta">
+            <span id="metaPages">0 Pages</span> &bull; 
+            <span id="metaEncrypted">Unencrypted</span>
+          </div>
+        </div>
+
+        <!-- Risk Meter -->
+        <div class="risk-bar-container">
+          <div id="riskBarFill" class="risk-bar-fill" style="width: 0%;"></div>
+        </div>
+
+        <!-- Danger Tags Breakdown -->
+        <div id="tagsContainer" class="tags-container">
+          <p class="tags-label">Detected Structural Indicators:</p>
+          <div id="tagsList" class="tags-list"></div>
+        </div>
+
+        <!-- Action Buttons -->
+        <div class="result-actions">
+          <button id="scanAgainBtn" class="btn-secondary">Scan Another</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Footer Links -->
+    <footer class="footer">
+      <a href="http://localhost:3000" target="_blank" class="dashboard-link">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="link-icon">
+          <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+          <polyline points="15 3 21 3 21 9" />
+          <line x1="10" y1="14" x2="21" y2="3" />
+        </svg>
+        Open PDFortress Dashboard
+      </a>
+      <span class="footer-version">v0.1.0 Prototype</span>
+    </footer>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
